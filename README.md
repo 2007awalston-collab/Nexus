@@ -48,6 +48,9 @@ raspberry-pi/game_server.py
 raspberry-pi/controller_manager.py
   Tracks controller player numbers, online status, and last_seen timestamps.
 
+raspberry-pi/controller_config.py
+  Fixed controller ID to player number assignments.
+
 esp32_controller/esp32_controller.ino
   Version 1 ESP32 controller registration sketch.
 

@@ -19,8 +19,9 @@ class ControllerRecord:
 
 
 class ControllerManager:
-    def __init__(self) -> None:
+    def __init__(self, fixed_player_assignments: dict[str, int] | None = None) -> None:
         self.controllers: dict[str, ControllerRecord] = {}
+        self.fixed_player_assignments = fixed_player_assignments or {}
 
     def register(self, controller_id: str) -> tuple[ControllerRecord, bool]:
         now = time.time()
@@ -33,12 +34,20 @@ class ControllerManager:
 
         controller = ControllerRecord(
             controller_id=controller_id,
-            player=self.next_player_number(),
+            player=self.player_number_for_controller(controller_id),
             online=True,
             last_seen=now,
         )
         self.controllers[controller_id] = controller
         return controller, True
+
+    def player_number_for_controller(self, controller_id: str) -> int:
+        fixed_player = self.fixed_player_assignments.get(controller_id)
+
+        if fixed_player is not None:
+            return fixed_player
+
+        return self.next_player_number()
 
     def mark_seen(self, controller_id: str) -> ControllerRecord | None:
         controller = self.controllers.get(controller_id)
@@ -63,6 +72,7 @@ class ControllerManager:
 
     def next_player_number(self) -> int:
         used_players = {controller.player for controller in self.controllers.values()}
+        used_players.update(self.fixed_player_assignments.values())
         player = 1
 
         while player in used_players:
@@ -82,4 +92,3 @@ class ControllerManager:
             controller_id: controller.to_dict()
             for controller_id, controller in self.controllers.items()
         }
-

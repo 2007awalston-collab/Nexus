@@ -5,6 +5,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from controller_manager import ControllerManager
+from controller_config import FIXED_PLAYER_ASSIGNMENTS
 
 
 MQTT_HOST = "127.0.0.1"
@@ -18,7 +19,7 @@ ONLINE_TIMEOUT_SECONDS = 15
 
 class NexusGameServer:
     def __init__(self) -> None:
-        self.controller_manager = ControllerManager()
+        self.controller_manager = ControllerManager(FIXED_PLAYER_ASSIGNMENTS)
         self.client = mqtt.Client(client_id="NexusGameServer")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
