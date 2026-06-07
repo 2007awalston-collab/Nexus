@@ -36,11 +36,17 @@ Each ESP32:
 docs/controller-registration-v1.md
   Version 1 controller registration and player assignment protocol.
 
+docs/controller-manager.md
+  Raspberry Pi controller manager design and heartbeat behavior.
+
 docs/protocol.md
   Earlier scalable node protocol notes.
 
 raspberry-pi/game_server.py
   Version 1 Raspberry Pi game server. Registers controllers and assigns players.
+
+raspberry-pi/controller_manager.py
+  Tracks controller player numbers, online status, and last_seen timestamps.
 
 esp32_controller/esp32_controller.ino
   Version 1 ESP32 controller registration sketch.

@@ -11,6 +11,7 @@ const char* mqttServer = "192.168.68.74";
 
 const char* registerTopic = "controller/register";
 const char* assignTopic = "controller/assign";
+const char* heartbeatTopic = "controller/heartbeat";
 
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
@@ -18,6 +19,7 @@ PubSubClient mqtt(wifiClient);
 String controllerID = "";
 int assignedPlayer = 0;
 unsigned long lastRegistrationTime = 0;
+unsigned long lastHeartbeatTime = 0;
 
 String getControllerID() {
   uint8_t mac[6];
@@ -59,6 +61,24 @@ String extractStringValue(String payload, String key) {
   return payload.substring(start, end);
 }
 
+String removeJsonWhitespace(String payload) {
+  String compact = "";
+  bool insideString = false;
+
+  for (unsigned int i = 0; i < payload.length(); i++) {
+    char c = payload[i];
+
+    if (c == '"') {
+      insideString = !insideString;
+      compact += c;
+    } else if (insideString || !isWhitespace(c)) {
+      compact += c;
+    }
+  }
+
+  return compact;
+}
+
 int extractIntValue(String payload, String key, int fallback) {
   String pattern = "\"" + key + "\":";
   int start = payload.indexOf(pattern);
@@ -93,7 +113,22 @@ void publishRegistration() {
   Serial.println(payload);
 }
 
+void publishHeartbeat() {
+  String payload =
+    String("{\"type\":\"heartbeat\",\"controller_id\":\"") +
+    controllerID +
+    "\",\"player\":" +
+    assignedPlayer +
+    ",\"uptime_ms\":" +
+    millis() +
+    "}";
+
+  mqtt.publish(heartbeatTopic, payload.c_str());
+}
+
 void handleAssignment(String payload) {
+  payload = removeJsonWhitespace(payload);
+
   String type = extractStringValue(payload, "type");
   String assignedControllerID = extractStringValue(payload, "controller_id");
   int player = extractIntValue(payload, "player", 0);
@@ -180,5 +215,9 @@ void loop() {
     publishRegistration();
     lastRegistrationTime = millis();
   }
-}
 
+  if (assignedPlayer > 0 && millis() - lastHeartbeatTime > 5000) {
+    publishHeartbeat();
+    lastHeartbeatTime = millis();
+  }
+}
