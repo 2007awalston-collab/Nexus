@@ -76,9 +76,8 @@ class NexusGameServer:
             "controller_id": controller_id,
             "player": player_number,
         }
-        self.client.publish(ASSIGN_TOPIC, json.dumps(payload))
+        self.client.publish(ASSIGN_TOPIC, json.dumps(payload, separators=(",", ":")))
 
 
 if __name__ == "__main__":
     NexusGameServer().start()
-
