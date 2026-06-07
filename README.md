@@ -1,6 +1,6 @@
-# Physical Video Board Game System
+# Nexus Connect
 
-This project is a scalable starting point for a tabletop game system built from:
+Nexus Connect is a scalable physical tabletop gaming system built from:
 
 - Raspberry Pi 5 as the central game controller
 - ESP32 modules as wireless input/output nodes
@@ -33,11 +33,20 @@ Each ESP32:
 ## Folder Layout
 
 ```text
+docs/controller-registration-v1.md
+  Version 1 controller registration and player assignment protocol.
+
 docs/protocol.md
-  Topic names, JSON message formats, and registration rules.
+  Earlier scalable node protocol notes.
+
+raspberry-pi/game_server.py
+  Version 1 Raspberry Pi game server. Registers controllers and assigns players.
+
+esp32_controller/esp32_controller.ino
+  Version 1 ESP32 controller registration sketch.
 
 pi/game_controller.py
-  Raspberry Pi controller service. Tracks registered nodes and routes simple game commands.
+  Earlier Raspberry Pi controller service. Tracks registered nodes and routes simple game commands.
 
 esp32/BoardGameNode/BoardGameNode.ino
   Reusable ESP32 template for buttons, LEDs, OLEDs, motors, and other hardware.
@@ -52,10 +61,10 @@ esp32/examples/MotorNode/MotorNode.ino
 ## First Milestone
 
 1. Run Mosquitto on the Raspberry Pi.
-2. Run `pi/game_controller.py` on the Raspberry Pi.
-3. Upload `MotorNode.ino` to the motor ESP32.
-4. Upload `ButtonNode.ino` to the button ESP32.
-5. Watch the Pi log registrations and events.
+2. Run `raspberry-pi/game_server.py` on the Raspberry Pi.
+3. Upload `esp32_controller/esp32_controller.ino` to each ESP32 controller.
+4. Watch the Pi register each controller by MAC address.
+5. Confirm the first connected controller is assigned Player 1.
 
 ## Install Python Dependency On Pi
 
@@ -68,9 +77,20 @@ python3 -m pip install paho-mqtt
 ## Run The Pi Controller
 
 ```bash
-cd video-board-game-system/pi
-python3 game_controller.py
+cd PhysicalVideoBoardGame_System/raspberry-pi
+python3 game_server.py
 ```
+
+## Controller Registration V1
+
+Version 1 uses these MQTT topics:
+
+```text
+controller/register
+controller/assign
+```
+
+See [docs/controller-registration-v1.md](docs/controller-registration-v1.md) for the exact message format and test steps.
 
 ## MQTT Test Commands
 
@@ -85,4 +105,3 @@ Stop it:
 ```bash
 mosquitto_pub -h 127.0.0.1 -t boardgame/nodes/motor_1/cmd -m '{"type":"command","command":"motor.set","value":"stop"}'
 ```
-
