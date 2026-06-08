@@ -21,8 +21,11 @@ class ReactionRaceGame:
     min_delay_seconds: float = 0.0
     max_delay_seconds: float = 10.0
     restart_delay_seconds: float = 5.0
+    blink_count: int = 3
+    blink_interval_ms: int = 150
     rng: random.Random | None = None
     clock: Callable[[], float] = time.monotonic
+    wall_clock: Callable[[], float] = time.time
 
     def __post_init__(self) -> None:
         self.rng = self.rng or random.Random()
@@ -70,14 +73,20 @@ class ReactionRaceGame:
         now = self.clock()
         self.winner = event.player
 
-        if self.led_on_at is not None:
+        reaction_ms = event.payload.get("reaction_ms")
+
+        if isinstance(reaction_ms, int):
+            self.response_ms = reaction_ms
+        elif self.led_on_at is not None:
             self.response_ms = int((now - self.led_on_at) * 1000)
 
         self.finish_round(status="finished", now=now)
 
     def schedule_round(self, now: float) -> None:
         delay = self.rng.uniform(self.min_delay_seconds, self.max_delay_seconds)
-        self.ready_at = now + delay
+        blink_duration = (self.blink_count * 2 * self.blink_interval_ms) / 1000
+        total_delay = blink_duration + delay
+        self.ready_at = now + total_delay
         self.led_on_at = None
         self.finished_at = None
         self.winner = None
@@ -86,13 +95,13 @@ class ReactionRaceGame:
         self.status = "ready"
         self.turn_leds_off()
         self.blink_round_start()
+        self.arm_reaction_leds(total_delay)
         self.broadcast_state(delay_seconds=round(delay, 3))
-        print(f"Reaction Race: round starts in {delay:.2f}s")
+        print(f"Reaction Race: round starts after blink + {delay:.2f}s")
 
     def start_reaction_window(self, now: float) -> None:
         self.status = "active"
         self.led_on_at = now
-        self.turn_leds_on()
         self.broadcast_state()
         print("Reaction Race: LEDs on")
 
@@ -144,8 +153,19 @@ class ReactionRaceGame:
                 "type": "command",
                 "controller_id": "all",
                 "command": "led.blink",
-                "count": 3,
-                "interval_ms": 150,
+                "count": self.blink_count,
+                "interval_ms": self.blink_interval_ms,
+            }
+        )
+
+    def arm_reaction_leds(self, delay_seconds: float) -> None:
+        self.publish_command(
+            {
+                "type": "command",
+                "controller_id": "all",
+                "command": "led.arm",
+                "start_epoch_ms": int((self.wall_clock() + delay_seconds) * 1000),
+                "fallback_delay_ms": int(delay_seconds * 1000),
             }
         )
 

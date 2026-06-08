@@ -3,6 +3,8 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <time.h>
+#include <sys/time.h>
 #include "esp_mac.h"
 #include "wifi_secrets.h"
 
@@ -30,6 +32,11 @@ bool ledBlinkActive = false;
 int ledBlinkRemainingToggles = 0;
 unsigned long ledBlinkIntervalMs = 150;
 unsigned long lastLedBlinkTime = 0;
+bool ledArmActive = false;
+uint64_t ledArmStartEpochMs = 0;
+unsigned long ledArmFallbackMillis = 0;
+bool reactionWindowActive = false;
+unsigned long reactionLedOnMillis = 0;
 
 String getControllerID() {
   uint8_t mac[6];
@@ -111,6 +118,52 @@ int extractIntValue(String payload, String key, int fallback) {
   return payload.substring(start, end).toInt();
 }
 
+uint64_t extractUInt64Value(String payload, String key, uint64_t fallback) {
+  String pattern = "\"" + key + "\":";
+  int start = payload.indexOf(pattern);
+
+  if (start < 0) {
+    return fallback;
+  }
+
+  start += pattern.length();
+  int end = payload.indexOf(",", start);
+
+  if (end < 0) {
+    end = payload.indexOf("}", start);
+  }
+
+  if (end < 0) {
+    return fallback;
+  }
+
+  String value = payload.substring(start, end);
+  uint64_t result = 0;
+
+  for (unsigned int i = 0; i < value.length(); i++) {
+    char c = value[i];
+
+    if (c < '0' || c > '9') {
+      break;
+    }
+
+    result = (result * 10) + (c - '0');
+  }
+
+  return result;
+}
+
+uint64_t currentEpochMs() {
+  timeval now;
+  gettimeofday(&now, nullptr);
+
+  if (now.tv_sec < 1700000000) {
+    return 0;
+  }
+
+  return ((uint64_t)now.tv_sec * 1000) + (now.tv_usec / 1000);
+}
+
 void publishRegistration() {
   String payload =
     String("{\"type\":\"register\",\"controller_id\":\"") +
@@ -144,7 +197,13 @@ void publishButtonPress() {
   String payload =
     String("{\"type\":\"event\",\"controller_id\":\"") +
     controllerID +
-    "\",\"event\":\"button.press\",\"control\":\"main_button\",\"value\":1}";
+    "\",\"event\":\"button.press\",\"control\":\"main_button\",\"value\":1";
+
+  if (reactionWindowActive) {
+    payload += String(",\"reaction_ms\":") + (millis() - reactionLedOnMillis);
+  }
+
+  payload += "}";
 
   mqtt.publish(eventTopic, payload.c_str());
 
@@ -191,16 +250,35 @@ void handleCommand(String payload) {
 
   if (command == "led.set") {
     ledBlinkActive = false;
+    ledArmActive = false;
+    reactionWindowActive = value > 0;
+    reactionLedOnMillis = millis();
     digitalWrite(LED_PIN, value > 0 ? HIGH : LOW);
   } else if (command == "led.blink") {
     int count = extractIntValue(payload, "count", 3);
     int intervalMs = extractIntValue(payload, "interval_ms", 150);
 
     ledBlinkActive = true;
+    ledArmActive = false;
+    reactionWindowActive = false;
     ledBlinkRemainingToggles = count * 2;
     ledBlinkIntervalMs = intervalMs;
     lastLedBlinkTime = millis();
     digitalWrite(LED_PIN, LOW);
+  } else if (command == "led.arm") {
+    uint64_t startEpochMs = extractUInt64Value(payload, "start_epoch_ms", 0);
+    int fallbackDelayMs = extractIntValue(payload, "fallback_delay_ms", 1000);
+    uint64_t nowEpochMs = currentEpochMs();
+
+    ledArmActive = true;
+    reactionWindowActive = false;
+    ledArmStartEpochMs = startEpochMs;
+    ledArmFallbackMillis = millis() + fallbackDelayMs;
+    digitalWrite(LED_PIN, LOW);
+
+    if (nowEpochMs > 0 && startEpochMs > 0 && nowEpochMs >= startEpochMs) {
+      ledArmFallbackMillis = millis();
+    }
   }
 }
 
@@ -223,6 +301,30 @@ void updateLedBlink() {
 
   digitalWrite(LED_PIN, digitalRead(LED_PIN) == HIGH ? LOW : HIGH);
   ledBlinkRemainingToggles--;
+}
+
+void updateArmedLed() {
+  if (!ledArmActive) {
+    return;
+  }
+
+  uint64_t nowEpochMs = currentEpochMs();
+  bool shouldTurnOn = false;
+
+  if (nowEpochMs > 0 && ledArmStartEpochMs > 0) {
+    shouldTurnOn = nowEpochMs >= ledArmStartEpochMs;
+  } else {
+    shouldTurnOn = millis() >= ledArmFallbackMillis;
+  }
+
+  if (!shouldTurnOn) {
+    return;
+  }
+
+  ledArmActive = false;
+  reactionWindowActive = true;
+  reactionLedOnMillis = millis();
+  digitalWrite(LED_PIN, HIGH);
 }
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
@@ -253,6 +355,15 @@ void connectToWiFi() {
   Serial.println();
   Serial.print("WiFi connected. ESP32 IP: ");
   Serial.println(WiFi.localIP());
+
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  Serial.print("Syncing clock");
+  for (int i = 0; i < 20 && currentEpochMs() == 0; i++) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
 }
 
 void connectToMQTT() {
@@ -299,6 +410,7 @@ void loop() {
 
   mqtt.loop();
   updateLedBlink();
+  updateArmedLed();
 
   bool buttonState = digitalRead(BUTTON_PIN);
 

@@ -43,8 +43,8 @@ Reaction Race is the first Nexus Connect game.
 - The Pi waits for two online controllers.
 - The Pi blinks all controller LEDs 3 times to show the round is starting.
 - The Pi turns all controller LEDs off.
-- The Pi waits a random 0-10 seconds.
-- The Pi turns all controller LEDs on at the same time.
+- The Pi sends a scheduled LED-on command for after the blink plus a random 0-10 second wait.
+- The ESP32 controllers turn their LEDs on at the scheduled time when their clocks are synced.
 - The first `button.press` after the LEDs turn on wins.
 - A `button.press` before the LEDs turn on is a false start.
 - Events from unregistered controllers are ignored.
@@ -106,6 +106,20 @@ Blink all controller LEDs 3 times:
   "interval_ms": 150
 }
 ```
+
+Arm all controller LEDs to turn on at a shared scheduled time:
+
+```json
+{
+  "type": "command",
+  "controller_id": "all",
+  "command": "led.arm",
+  "start_epoch_ms": 1780900000000,
+  "fallback_delay_ms": 2500
+}
+```
+
+The ESP32 tries to use NTP time for `start_epoch_ms`. If its clock is not synced, it uses `fallback_delay_ms`.
 
 ## Local Test Event
 

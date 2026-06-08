@@ -159,6 +159,18 @@ The first playable game uses broadcast LED commands so all player controllers ca
 }
 ```
 
+The game then arms the real reaction light for a shared scheduled time:
+
+```json
+{
+  "type": "command",
+  "controller_id": "all",
+  "command": "led.arm",
+  "start_epoch_ms": 1780900000000,
+  "fallback_delay_ms": 2500
+}
+```
+
 ```json
 {
   "type": "command",

@@ -45,13 +45,14 @@ class ReactionRaceGameTest(unittest.TestCase):
 
         game.tick()
         self.assertEqual(game.status, "ready")
-        self.assertEqual(commands[-1]["command"], "led.blink")
-        self.assertEqual(commands[-1]["count"], 3)
+        self.assertEqual(commands[-2]["command"], "led.blink")
+        self.assertEqual(commands[-2]["count"], 3)
+        self.assertEqual(commands[-1]["command"], "led.arm")
 
-        clock.advance(1.0)
+        clock.advance(1.9)
         game.tick()
         self.assertEqual(game.status, "active")
-        self.assertEqual(commands[-1]["value"], 1)
+        self.assertEqual(commands[-1]["command"], "led.arm")
 
         clock.advance(0.250)
         bus.publish(GameEvent(name="button.press", controller_id="A", player=1))

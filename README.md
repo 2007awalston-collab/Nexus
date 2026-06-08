@@ -118,7 +118,7 @@ See [docs/controller-registration-v1.md](docs/controller-registration-v1.md) for
 
 `raspberry-pi/game_server.py` now runs Reaction Race.
 
-After two controllers are online, the Pi blinks each controller LED 3 times, turns the LEDs off, waits a random 0-10 seconds, turns both LEDs on at the same time, and listens for the first button press.
+After two controllers are online, the Pi blinks each controller LED 3 times, arms the LEDs for a shared scheduled start time, waits a random 0-10 seconds, and listens for the first button press after the LEDs turn on.
 
 Each controller button press publishes:
 
