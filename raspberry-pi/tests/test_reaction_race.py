@@ -31,6 +31,8 @@ class ReactionRaceGameTest(unittest.TestCase):
             states.append,
             commands.append,
             lambda: online_players,
+            lambda: ["A", "B"] if online_players >= 2 else ["A"],
+            {},
             min_delay_seconds=1.0,
             max_delay_seconds=1.0,
             restart_delay_seconds=5.0,
@@ -45,10 +47,13 @@ class ReactionRaceGameTest(unittest.TestCase):
 
         game.tick()
         self.assertEqual(game.status, "ready")
-        self.assertEqual(commands[-2]["command"], "led.blink")
-        self.assertEqual(commands[-2]["count"], 3)
-        self.assertEqual(commands[-2]["fallback_delay_ms"], 1000)
-        self.assertEqual(commands[-1]["command"], "led.arm")
+        blink_commands = [command for command in commands if command.get("command") == "led.blink"]
+        arm_commands = [command for command in commands if command.get("command") == "led.arm"]
+
+        self.assertEqual(len(blink_commands), 2)
+        self.assertEqual(len(arm_commands), 2)
+        self.assertEqual(blink_commands[0]["count"], 3)
+        self.assertEqual(blink_commands[0]["fallback_delay_ms"], 1000)
 
         clock.advance(2.9)
         game.tick()
@@ -95,6 +100,34 @@ class ReactionRaceGameTest(unittest.TestCase):
 
         self.assertEqual(game.status, "waiting_for_players")
         self.assertEqual(commands[-1]["value"], 0)
+
+    def test_applies_per_controller_led_timing_offsets(self) -> None:
+        states = []
+        commands = []
+        bus = EventBus()
+        clock = ManualClock()
+        game = ReactionRaceGame(
+            bus,
+            states.append,
+            commands.append,
+            lambda: 2,
+            lambda: ["A", "B"],
+            {"B": -120},
+            min_delay_seconds=1.0,
+            max_delay_seconds=1.0,
+            rng=random.Random(1),
+            clock=clock,
+            wall_clock=lambda: 100.0,
+        )
+        game.start()
+
+        game.tick()
+        arm_commands = [command for command in commands if command.get("command") == "led.arm"]
+
+        self.assertEqual(arm_commands[0]["controller_id"], "A")
+        self.assertEqual(arm_commands[0]["fallback_delay_ms"], 2900)
+        self.assertEqual(arm_commands[1]["controller_id"], "B")
+        self.assertEqual(arm_commands[1]["fallback_delay_ms"], 2780)
 
 
 if __name__ == "__main__":

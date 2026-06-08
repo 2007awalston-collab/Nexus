@@ -9,3 +9,14 @@ FIXED_PLAYER_ASSIGNMENTS = {
     # "DD:EE:FF:44:55:66": 3,
 }
 
+# Per-controller LED timing calibration in milliseconds.
+#
+# Use a negative number if that controller's LED is consistently late.
+# Use a positive number if that controller's LED is consistently early.
+#
+# Example:
+# LED_TIMING_OFFSETS_MS = {
+#     "AA:BB:CC:11:22:33": -120,
+# }
+LED_TIMING_OFFSETS_MS = {
+}

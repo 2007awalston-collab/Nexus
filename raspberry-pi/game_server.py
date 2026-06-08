@@ -5,7 +5,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from controller_manager import ControllerManager
-from controller_config import FIXED_PLAYER_ASSIGNMENTS
+from controller_config import FIXED_PLAYER_ASSIGNMENTS, LED_TIMING_OFFSETS_MS
 from event_bus import EventBus, GameEvent
 from games.reaction_race import ReactionRaceGame
 
@@ -31,6 +31,8 @@ class NexusGameServer:
             self.publish_game_state,
             self.publish_controller_command,
             self.online_player_count,
+            self.online_controller_ids,
+            LED_TIMING_OFFSETS_MS,
         )
         self.client = mqtt.Client(client_id="NexusGameServer")
         self.client.on_connect = self.on_connect
@@ -166,6 +168,13 @@ class NexusGameServer:
             for controller in self.controller_manager.controllers.values()
             if controller.online
         )
+
+    def online_controller_ids(self) -> list[str]:
+        return [
+            controller.controller_id
+            for controller in self.controller_manager.controllers.values()
+            if controller.online
+        ]
 
     def check_controller_timeouts(self) -> None:
         offline_controllers = self.controller_manager.mark_inactive_controllers_offline(

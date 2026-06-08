@@ -9,6 +9,7 @@ from event_bus import EventBus, GameEvent
 StatePublisher = Callable[[dict[str, Any]], None]
 CommandPublisher = Callable[[dict[str, Any]], None]
 PlayerCountProvider = Callable[[], int]
+ControllerIdsProvider = Callable[[], list[str]]
 
 
 @dataclass
@@ -17,6 +18,8 @@ class ReactionRaceGame:
     publish_state: StatePublisher
     publish_command: CommandPublisher
     online_player_count: PlayerCountProvider
+    online_controller_ids: ControllerIdsProvider
+    led_timing_offsets_ms: dict[str, int]
     min_players: int = 2
     min_delay_seconds: float = 0.0
     max_delay_seconds: float = 10.0
@@ -177,28 +180,40 @@ class ReactionRaceGame:
         self.turn_leds_off()
         self.next_off_repeat_at = now + self.off_repeat_interval_seconds
 
-    def blink_round_start(self, delay_seconds: float) -> None:
-        self.publish_command(
-            {
+    def publish_scheduled_led_command(self, command: str, delay_seconds: float, extra: dict[str, Any]) -> None:
+        controller_ids = self.online_controller_ids()
+
+        if not controller_ids:
+            controller_ids = ["all"]
+
+        for controller_id in controller_ids:
+            offset_ms = self.led_timing_offsets_ms.get(controller_id, 0)
+            adjusted_delay_seconds = max(0.0, delay_seconds + (offset_ms / 1000))
+            payload = {
                 "type": "command",
-                "controller_id": "all",
-                "command": "led.blink",
+                "controller_id": controller_id,
+                "command": command,
+                "start_epoch_ms": int((self.wall_clock() + adjusted_delay_seconds) * 1000),
+                "fallback_delay_ms": int(adjusted_delay_seconds * 1000),
+            }
+            payload.update(extra)
+            self.publish_command(payload)
+
+    def blink_round_start(self, delay_seconds: float) -> None:
+        self.publish_scheduled_led_command(
+            "led.blink",
+            delay_seconds,
+            {
                 "count": self.blink_count,
                 "interval_ms": self.blink_interval_ms,
-                "start_epoch_ms": int((self.wall_clock() + delay_seconds) * 1000),
-                "fallback_delay_ms": int(delay_seconds * 1000),
-            }
+            },
         )
 
     def arm_reaction_leds(self, delay_seconds: float) -> None:
-        self.publish_command(
-            {
-                "type": "command",
-                "controller_id": "all",
-                "command": "led.arm",
-                "start_epoch_ms": int((self.wall_clock() + delay_seconds) * 1000),
-                "fallback_delay_ms": int(delay_seconds * 1000),
-            }
+        self.publish_scheduled_led_command(
+            "led.arm",
+            delay_seconds,
+            {},
         )
 
     def snapshot(self, delay_seconds: float | None = None) -> dict[str, Any]:
