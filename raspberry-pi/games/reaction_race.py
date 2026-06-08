@@ -23,6 +23,9 @@ class ReactionRaceGame:
     restart_delay_seconds: float = 5.0
     blink_count: int = 3
     blink_interval_ms: int = 150
+    blink_start_lead_seconds: float = 1.0
+    off_repeat_seconds: float = 1.0
+    off_repeat_interval_seconds: float = 0.15
     rng: random.Random | None = None
     clock: Callable[[], float] = time.monotonic
     wall_clock: Callable[[], float] = time.time
@@ -36,6 +39,8 @@ class ReactionRaceGame:
         self.winner: int | None = None
         self.false_start_player: int | None = None
         self.response_ms: int | None = None
+        self.off_repeat_until: float | None = None
+        self.next_off_repeat_at: float | None = None
 
     def start(self) -> None:
         self.event_bus.subscribe("button.press", self.on_button_press)
@@ -44,6 +49,7 @@ class ReactionRaceGame:
 
     def tick(self) -> None:
         now = self.clock()
+        self.repeat_leds_off_if_needed(now)
 
         if self.status == "waiting_for_players":
             if self.online_player_count() >= self.min_players:
@@ -85,16 +91,18 @@ class ReactionRaceGame:
     def schedule_round(self, now: float) -> None:
         delay = self.rng.uniform(self.min_delay_seconds, self.max_delay_seconds)
         blink_duration = (self.blink_count * 2 * self.blink_interval_ms) / 1000
-        total_delay = blink_duration + delay
+        total_delay = self.blink_start_lead_seconds + blink_duration + delay
         self.ready_at = now + total_delay
         self.led_on_at = None
         self.finished_at = None
         self.winner = None
         self.false_start_player = None
         self.response_ms = None
+        self.off_repeat_until = None
+        self.next_off_repeat_at = None
         self.status = "ready"
         self.turn_leds_off()
-        self.blink_round_start()
+        self.blink_round_start(self.blink_start_lead_seconds)
         self.arm_reaction_leds(total_delay)
         self.broadcast_state(delay_seconds=round(delay, 3))
         print(f"Reaction Race: round starts after blink + {delay:.2f}s")
@@ -108,7 +116,7 @@ class ReactionRaceGame:
     def finish_round(self, status: str, now: float) -> None:
         self.status = status
         self.finished_at = now
-        self.turn_leds_off()
+        self.start_repeating_leds_off(now)
         self.broadcast_state()
 
         if status == "false_start":
@@ -124,6 +132,8 @@ class ReactionRaceGame:
         self.winner = None
         self.false_start_player = None
         self.response_ms = None
+        self.off_repeat_until = None
+        self.next_off_repeat_at = None
         self.turn_leds_off()
         self.broadcast_state()
 
@@ -147,7 +157,27 @@ class ReactionRaceGame:
             }
         )
 
-    def blink_round_start(self) -> None:
+    def start_repeating_leds_off(self, now: float) -> None:
+        self.off_repeat_until = now + self.off_repeat_seconds
+        self.next_off_repeat_at = now
+        self.repeat_leds_off_if_needed(now)
+
+    def repeat_leds_off_if_needed(self, now: float) -> None:
+        if self.off_repeat_until is None or self.next_off_repeat_at is None:
+            return
+
+        if now > self.off_repeat_until:
+            self.off_repeat_until = None
+            self.next_off_repeat_at = None
+            return
+
+        if now < self.next_off_repeat_at:
+            return
+
+        self.turn_leds_off()
+        self.next_off_repeat_at = now + self.off_repeat_interval_seconds
+
+    def blink_round_start(self, delay_seconds: float) -> None:
         self.publish_command(
             {
                 "type": "command",
@@ -155,6 +185,8 @@ class ReactionRaceGame:
                 "command": "led.blink",
                 "count": self.blink_count,
                 "interval_ms": self.blink_interval_ms,
+                "start_epoch_ms": int((self.wall_clock() + delay_seconds) * 1000),
+                "fallback_delay_ms": int(delay_seconds * 1000),
             }
         )
 

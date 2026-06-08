@@ -47,9 +47,10 @@ class ReactionRaceGameTest(unittest.TestCase):
         self.assertEqual(game.status, "ready")
         self.assertEqual(commands[-2]["command"], "led.blink")
         self.assertEqual(commands[-2]["count"], 3)
+        self.assertEqual(commands[-2]["fallback_delay_ms"], 1000)
         self.assertEqual(commands[-1]["command"], "led.arm")
 
-        clock.advance(1.9)
+        clock.advance(2.9)
         game.tick()
         self.assertEqual(game.status, "active")
         self.assertEqual(commands[-1]["command"], "led.arm")
@@ -62,6 +63,18 @@ class ReactionRaceGameTest(unittest.TestCase):
         self.assertEqual(game.response_ms, 250)
         self.assertEqual(commands[-1]["value"], 0)
         self.assertEqual(states[-1]["winner"], 1)
+
+        off_command_count = len(
+            [command for command in commands if command.get("command") == "led.set" and command.get("value") == 0]
+        )
+        clock.advance(0.15)
+        game.tick()
+        self.assertGreater(
+            len(
+                [command for command in commands if command.get("command") == "led.set" and command.get("value") == 0]
+            ),
+            off_command_count,
+        )
 
     def test_press_before_led_turns_on_is_false_start(self) -> None:
         game, bus, states, commands, _clock = self.make_game()

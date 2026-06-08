@@ -29,9 +29,12 @@ unsigned long lastHeartbeatTime = 0;
 unsigned long lastButtonPressTime = 0;
 bool lastButtonState = HIGH;
 bool ledBlinkActive = false;
+bool ledBlinkArmed = false;
 int ledBlinkRemainingToggles = 0;
 unsigned long ledBlinkIntervalMs = 150;
 unsigned long lastLedBlinkTime = 0;
+uint64_t ledBlinkStartEpochMs = 0;
+unsigned long ledBlinkFallbackMillis = 0;
 bool ledArmActive = false;
 uint64_t ledArmStartEpochMs = 0;
 unsigned long ledArmFallbackMillis = 0;
@@ -250,6 +253,7 @@ void handleCommand(String payload) {
 
   if (command == "led.set") {
     ledBlinkActive = false;
+    ledBlinkArmed = false;
     ledArmActive = false;
     reactionWindowActive = value > 0;
     reactionLedOnMillis = millis();
@@ -257,13 +261,16 @@ void handleCommand(String payload) {
   } else if (command == "led.blink") {
     int count = extractIntValue(payload, "count", 3);
     int intervalMs = extractIntValue(payload, "interval_ms", 150);
+    int fallbackDelayMs = extractIntValue(payload, "fallback_delay_ms", 0);
 
-    ledBlinkActive = true;
+    ledBlinkActive = false;
+    ledBlinkArmed = true;
     ledArmActive = false;
     reactionWindowActive = false;
     ledBlinkRemainingToggles = count * 2;
     ledBlinkIntervalMs = intervalMs;
-    lastLedBlinkTime = millis();
+    ledBlinkStartEpochMs = extractUInt64Value(payload, "start_epoch_ms", 0);
+    ledBlinkFallbackMillis = millis() + fallbackDelayMs;
     digitalWrite(LED_PIN, LOW);
   } else if (command == "led.arm") {
     uint64_t startEpochMs = extractUInt64Value(payload, "start_epoch_ms", 0);
@@ -279,6 +286,32 @@ void handleCommand(String payload) {
     if (nowEpochMs > 0 && startEpochMs > 0 && nowEpochMs >= startEpochMs) {
       ledArmFallbackMillis = millis();
     }
+  }
+}
+
+void startLedBlink() {
+  ledBlinkArmed = false;
+  ledBlinkActive = true;
+  lastLedBlinkTime = millis();
+  digitalWrite(LED_PIN, LOW);
+}
+
+void updateArmedBlink() {
+  if (!ledBlinkArmed) {
+    return;
+  }
+
+  uint64_t nowEpochMs = currentEpochMs();
+  bool shouldStart = false;
+
+  if (nowEpochMs > 0 && ledBlinkStartEpochMs > 0) {
+    shouldStart = nowEpochMs >= ledBlinkStartEpochMs;
+  } else {
+    shouldStart = millis() >= ledBlinkFallbackMillis;
+  }
+
+  if (shouldStart) {
+    startLedBlink();
   }
 }
 
@@ -409,6 +442,7 @@ void loop() {
   }
 
   mqtt.loop();
+  updateArmedBlink();
   updateLedBlink();
   updateArmedLed();
 
