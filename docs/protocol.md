@@ -40,10 +40,22 @@ Commands from Pi to ESP32:
 boardgame/nodes/<node_id>/cmd
 ```
 
+Controller commands from Pi to registered controllers:
+
+```text
+controller/command
+```
+
 Broadcast game-state messages from Pi to all ESP32s:
 
 ```text
 boardgame/game/state
+```
+
+Current Nexus controller game-state messages:
+
+```text
+game/state
 ```
 
 ## Registration Message
@@ -133,3 +145,27 @@ motor.set
 haptic.pulse
 ```
 
+## Reaction Race Controller Command
+
+The first playable game uses broadcast LED commands so all player controllers can blink together and light up at the same time:
+
+```json
+{
+  "type": "command",
+  "controller_id": "all",
+  "command": "led.blink",
+  "count": 3,
+  "interval_ms": 150
+}
+```
+
+```json
+{
+  "type": "command",
+  "controller_id": "all",
+  "command": "led.set",
+  "value": 1
+}
+```
+
+Set `value` to `0` to turn the LEDs off.

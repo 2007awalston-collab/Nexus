@@ -1,3 +1,4 @@
 __pycache__/
 *.pyc
+esp32_controller/wifi_secrets.h
 

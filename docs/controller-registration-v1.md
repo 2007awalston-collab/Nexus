@@ -1,8 +1,8 @@
 # Nexus Connect Controller Registration, Version 1
 
-Version 1 only handles controller identity and player assignment.
+Version 1 handles controller identity, player assignment, heartbeats, button events, and LED commands.
 
-It does not implement game logic, OLED menus, LEDs, vibration motors, or button handling.
+It does not implement OLED menus, vibration motors, or advanced game-specific controller hardware yet.
 
 ## Flow
 
@@ -14,6 +14,8 @@ It does not implement game logic, OLED menus, LEDs, vibration motors, or button 
 6. Raspberry Pi stores the controller.
 7. Raspberry Pi assigns the next player number.
 8. ESP32 receives the player assignment.
+9. ESP32 publishes button events.
+10. Raspberry Pi sends LED commands for the active game.
 
 ## MQTT Topics
 
@@ -27,6 +29,18 @@ Raspberry Pi publishes assignment:
 
 ```text
 controller/assign
+```
+
+ESP32 publishes input events:
+
+```text
+controller/event
+```
+
+Raspberry Pi publishes controller commands:
+
+```text
+controller/command
 ```
 
 ## Registration Message

@@ -39,6 +39,9 @@ docs/controller-registration-v1.md
 docs/controller-manager.md
   Raspberry Pi controller manager design and heartbeat behavior.
 
+docs/event-system.md
+  Controller events, game state messages, and the first game loop.
+
 docs/protocol.md
   Earlier scalable node protocol notes.
 
@@ -51,8 +54,14 @@ raspberry-pi/controller_manager.py
 raspberry-pi/controller_config.py
   Fixed controller ID to player number assignments.
 
+raspberry-pi/event_bus.py
+  Small in-process event bus for routing controller input to games.
+
+raspberry-pi/games/reaction_race.py
+  First playable game. LEDs turn on after a random wait, and the fastest button press wins.
+
 esp32_controller/esp32_controller.ino
-  Version 1 ESP32 controller registration sketch.
+  Version 1 ESP32 controller sketch. Registers, receives player assignment, sends heartbeats, and publishes button events.
 
 pi/game_controller.py
   Earlier Raspberry Pi controller service. Tracks registered nodes and routes simple game commands.
@@ -97,9 +106,50 @@ Version 1 uses these MQTT topics:
 ```text
 controller/register
 controller/assign
+controller/heartbeat
+controller/event
+controller/command
+game/state
 ```
 
 See [docs/controller-registration-v1.md](docs/controller-registration-v1.md) for the exact message format and test steps.
+
+## First Game: Reaction Race
+
+`raspberry-pi/game_server.py` now runs Reaction Race.
+
+After two controllers are online, the Pi blinks each controller LED 3 times, turns the LEDs off, waits a random 0-10 seconds, turns both LEDs on at the same time, and listens for the first button press.
+
+Each controller button press publishes:
+
+```json
+{"type":"event","controller_id":"94:A9:90:68:A1:90","event":"button.press","control":"main_button","value":1}
+```
+
+The Pi maps the controller ID to its player number, scores the event, and publishes the latest game state on:
+
+```text
+game/state
+```
+
+The first player to press after the LEDs turn on wins. Pressing before the LEDs turn on is a false start.
+
+The ESP32 controller sketch uses these pins by default:
+
+```text
+Button: D9
+LED: D10
+```
+
+## ESP32 WiFi Secrets
+
+The controller sketch reads WiFi credentials from a local file that is ignored by Git:
+
+```text
+esp32_controller/wifi_secrets.h
+```
+
+Use `esp32_controller/wifi_secrets.example.h` as the template, then put your real WiFi name and password in `wifi_secrets.h`.
 
 ## MQTT Test Commands
 

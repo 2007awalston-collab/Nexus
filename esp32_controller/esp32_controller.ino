@@ -4,14 +4,18 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "esp_mac.h"
+#include "wifi_secrets.h"
 
-const char* ssid = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
 const char* mqttServer = "192.168.68.74";
 
 const char* registerTopic = "controller/register";
 const char* assignTopic = "controller/assign";
 const char* heartbeatTopic = "controller/heartbeat";
+const char* eventTopic = "controller/event";
+const char* commandTopic = "controller/command";
+
+const int BUTTON_PIN = D9;
+const int LED_PIN = D10;
 
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
@@ -20,6 +24,12 @@ String controllerID = "";
 int assignedPlayer = 0;
 unsigned long lastRegistrationTime = 0;
 unsigned long lastHeartbeatTime = 0;
+unsigned long lastButtonPressTime = 0;
+bool lastButtonState = HIGH;
+bool ledBlinkActive = false;
+int ledBlinkRemainingToggles = 0;
+unsigned long ledBlinkIntervalMs = 150;
+unsigned long lastLedBlinkTime = 0;
 
 String getControllerID() {
   uint8_t mac[6];
@@ -126,6 +136,21 @@ void publishHeartbeat() {
   mqtt.publish(heartbeatTopic, payload.c_str());
 }
 
+void publishButtonPress() {
+  if (assignedPlayer == 0) {
+    return;
+  }
+
+  String payload =
+    String("{\"type\":\"event\",\"controller_id\":\"") +
+    controllerID +
+    "\",\"event\":\"button.press\",\"control\":\"main_button\",\"value\":1}";
+
+  mqtt.publish(eventTopic, payload.c_str());
+
+  Serial.println("Button press sent");
+}
+
 void handleAssignment(String payload) {
   payload = removeJsonWhitespace(payload);
 
@@ -148,6 +173,58 @@ void handleAssignment(String payload) {
   Serial.println(" Assigned");
 }
 
+void handleCommand(String payload) {
+  payload = removeJsonWhitespace(payload);
+
+  String type = extractStringValue(payload, "type");
+  String targetControllerID = extractStringValue(payload, "controller_id");
+  String command = extractStringValue(payload, "command");
+  int value = extractIntValue(payload, "value", 0);
+
+  if (type != "command") {
+    return;
+  }
+
+  if (targetControllerID != "all" && targetControllerID != controllerID) {
+    return;
+  }
+
+  if (command == "led.set") {
+    ledBlinkActive = false;
+    digitalWrite(LED_PIN, value > 0 ? HIGH : LOW);
+  } else if (command == "led.blink") {
+    int count = extractIntValue(payload, "count", 3);
+    int intervalMs = extractIntValue(payload, "interval_ms", 150);
+
+    ledBlinkActive = true;
+    ledBlinkRemainingToggles = count * 2;
+    ledBlinkIntervalMs = intervalMs;
+    lastLedBlinkTime = millis();
+    digitalWrite(LED_PIN, LOW);
+  }
+}
+
+void updateLedBlink() {
+  if (!ledBlinkActive) {
+    return;
+  }
+
+  if (millis() - lastLedBlinkTime < ledBlinkIntervalMs) {
+    return;
+  }
+
+  lastLedBlinkTime = millis();
+
+  if (ledBlinkRemainingToggles <= 0) {
+    ledBlinkActive = false;
+    digitalWrite(LED_PIN, LOW);
+    return;
+  }
+
+  digitalWrite(LED_PIN, digitalRead(LED_PIN) == HIGH ? LOW : HIGH);
+  ledBlinkRemainingToggles--;
+}
+
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   String message = "";
 
@@ -155,12 +232,18 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
 
-  handleAssignment(message);
+  String topicName = String(topic);
+
+  if (topicName == assignTopic) {
+    handleAssignment(message);
+  } else if (topicName == commandTopic) {
+    handleCommand(message);
+  }
 }
 
 void connectToWiFi() {
   Serial.print("Connecting to WiFi");
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -179,6 +262,7 @@ void connectToMQTT() {
     if (mqtt.connect(controllerID.c_str())) {
       Serial.println("connected");
       mqtt.subscribe(assignTopic);
+      mqtt.subscribe(commandTopic);
       publishRegistration();
     } else {
       Serial.print("failed, rc=");
@@ -192,6 +276,10 @@ void connectToMQTT() {
 void setup() {
   Serial.begin(115200);
   delay(500);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   controllerID = getControllerID();
 
@@ -210,6 +298,20 @@ void loop() {
   }
 
   mqtt.loop();
+  updateLedBlink();
+
+  bool buttonState = digitalRead(BUTTON_PIN);
+
+  if (lastButtonState == HIGH && buttonState == LOW) {
+    unsigned long now = millis();
+
+    if (now - lastButtonPressTime > 250) {
+      publishButtonPress();
+      lastButtonPressTime = now;
+    }
+  }
+
+  lastButtonState = buttonState;
 
   if (assignedPlayer == 0 && millis() - lastRegistrationTime > 5000) {
     publishRegistration();
