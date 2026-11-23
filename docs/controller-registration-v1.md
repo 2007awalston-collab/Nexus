@@ -95,17 +95,14 @@ Open this sketch in Arduino IDE:
 esp32_controller/esp32_controller.ino
 ```
 
-Change:
+Copy `esp32_controller/wifi_secrets.example.h` to `esp32_controller/wifi_secrets.h` and fill in:
 
 ```cpp
-const char* ssid = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID = "YOUR_WIFI_NAME";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* MQTT_SERVER = "YOUR_PI_IP_ADDRESS";
 ```
 
-The MQTT server is already set to:
-
-```cpp
-const char* mqttServer = "192.168.68.74";
-```
+`wifi_secrets.h` is ignored by Git, so your credentials and network address stay off GitHub.
 
 Upload the same sketch to each controller ESP32. Each board will use its own MAC address as its permanent controller ID.
