@@ -6,7 +6,7 @@
 
 const char* ssid = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqttServer = "192.168.68.74";
+const char* mqttServer = "YOUR_PI_IP_ADDRESS";
 
 const char* nodeId = "motor_1";
 const char* baseTopic = "boardgame";

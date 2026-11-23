@@ -1,23 +1,19 @@
-// Button ESP32 node for the physical board game system.
-// Publishes button.press events to the Raspberry Pi MQTT broker.
+// Generic ESP32 node template for the physical board game system.
+// Copy this sketch when adding a new controller.
 
 #include <WiFi.h>
 #include <PubSubClient.h>
 
 const char* ssid = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqttServer = "192.168.68.74";
+const char* mqttServer = "YOUR_PI_IP_ADDRESS";
 
-const char* nodeId = "button_1";
+const char* nodeId = "new_node_1";
 const char* baseTopic = "boardgame";
-
-const int BUTTON_PIN = D2;
 
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 
-bool lastButtonState = HIGH;
-unsigned long lastPressTime = 0;
 unsigned long lastHeartbeatTime = 0;
 
 String nodeTopic(const char* suffix) {
@@ -28,17 +24,11 @@ void publishRegistration() {
   String payload =
     "{"
     "\"type\":\"register\","
-    "\"node_id\":\"button_1\","
-    "\"role\":\"input\","
-    "\"name\":\"Button Node 1\","
+    "\"node_id\":\"new_node_1\","
+    "\"role\":\"custom\","
+    "\"name\":\"New Node 1\","
     "\"firmware\":\"0.1.0\","
-    "\"capabilities\":["
-      "{"
-      "\"id\":\"main_button\","
-      "\"type\":\"button\","
-      "\"events\":[\"button.press\",\"button.release\"]"
-      "}"
-    "]"
+    "\"capabilities\":[]"
     "}";
 
   mqtt.publish(nodeTopic("register").c_str(), payload.c_str(), true);
@@ -52,17 +42,14 @@ void publishHeartbeat() {
   mqtt.publish(nodeTopic("heartbeat").c_str(), payload.c_str());
 }
 
-void publishButtonPress() {
-  String payload =
-    "{"
-    "\"type\":\"event\","
-    "\"node_id\":\"button_1\","
-    "\"event\":\"button.press\","
-    "\"control\":\"main_button\","
-    "\"value\":1"
-    "}";
+void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+  String message = "";
 
-  mqtt.publish(nodeTopic("event").c_str(), payload.c_str());
+  for (unsigned int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+
+  // Handle commands here.
 }
 
 void connectToWiFi() {
@@ -76,6 +63,7 @@ void connectToWiFi() {
 void connectToMQTT() {
   while (!mqtt.connected()) {
     if (mqtt.connect(nodeId)) {
+      mqtt.subscribe(nodeTopic("cmd").c_str());
       publishRegistration();
     } else {
       delay(1000);
@@ -84,10 +72,10 @@ void connectToMQTT() {
 }
 
 void setup() {
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-
   connectToWiFi();
+
   mqtt.setServer(mqttServer, 1883);
+  mqtt.setCallback(onMqttMessage);
 }
 
 void loop() {
@@ -96,19 +84,6 @@ void loop() {
   }
 
   mqtt.loop();
-
-  bool buttonState = digitalRead(BUTTON_PIN);
-
-  if (lastButtonState == HIGH && buttonState == LOW) {
-    unsigned long now = millis();
-
-    if (now - lastPressTime > 250) {
-      publishButtonPress();
-      lastPressTime = now;
-    }
-  }
-
-  lastButtonState = buttonState;
 
   if (millis() - lastHeartbeatTime > 5000) {
     publishHeartbeat();

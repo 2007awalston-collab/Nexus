@@ -63,17 +63,17 @@ raspberry-pi/games/reaction_race.py
 esp32_controller/esp32_controller.ino
   Version 1 ESP32 controller sketch. Registers, receives player assignment, sends heartbeats, and publishes button events.
 
-pi/game_controller.py
+legacy/pi/game_controller.py
   Earlier Raspberry Pi controller service. Tracks registered nodes and routes simple game commands.
 
-esp32/BoardGameNode/BoardGameNode.ino
-  Reusable ESP32 template for buttons, LEDs, OLEDs, motors, and other hardware.
+legacy/esp32/BoardGameNode/BoardGameNode.ino
+  Earlier reusable ESP32 template for buttons, LEDs, OLEDs, motors, and other hardware.
 
-esp32/examples/ButtonNode/ButtonNode.ino
-  Minimal button controller that publishes button events.
+legacy/esp32/examples/ButtonNode/ButtonNode.ino
+  Earlier minimal button controller that publishes button events.
 
-esp32/examples/MotorNode/MotorNode.ino
-  Motor controller for TB6612FNG using D2/D3/D4/D5 pins.
+legacy/esp32/examples/MotorNode/MotorNode.ino
+  Earlier motor controller for TB6612FNG using D2/D3/D4/D5 pins.
 ```
 
 ## First Milestone
@@ -95,7 +95,7 @@ python3 -m pip install paho-mqtt
 ## Run The Pi Controller
 
 ```bash
-cd PhysicalVideoBoardGame_System/raspberry-pi
+cd raspberry-pi
 python3 game_server.py
 ```
 
@@ -143,13 +143,13 @@ LED: D10
 
 ## ESP32 WiFi Secrets
 
-The controller sketch reads WiFi credentials from a local file that is ignored by Git:
+The controller sketch reads WiFi credentials and the MQTT broker address from a local file that is ignored by Git:
 
 ```text
 esp32_controller/wifi_secrets.h
 ```
 
-Use `esp32_controller/wifi_secrets.example.h` as the template, then put your real WiFi name and password in `wifi_secrets.h`.
+Use `esp32_controller/wifi_secrets.example.h` as the template, then put your real WiFi name, WiFi password and the Raspberry Pi's IP address in `wifi_secrets.h`.
 
 ## MQTT Test Commands
 

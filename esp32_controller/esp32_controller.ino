@@ -8,7 +8,7 @@
 #include "esp_mac.h"
 #include "wifi_secrets.h"
 
-const char* mqttServer = "192.168.68.74";
+const char* mqttServer = MQTT_SERVER;  // set in wifi_secrets.h
 
 const char* registerTopic = "controller/register";
 const char* assignTopic = "controller/assign";
