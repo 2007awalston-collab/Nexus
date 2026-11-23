@@ -1,166 +1,144 @@
 # Nexus Connect
 
-Nexus Connect is a scalable physical tabletop gaming system built from:
+**A wireless physical game system. ESP32 controllers talk to a Raspberry Pi 5 game server over Wi-Fi and MQTT, so a game can add players just by powering on another controller.**
 
-- Raspberry Pi 5 as the central game controller
-- ESP32 modules as wireless input/output nodes
-- MQTT as the communication layer
+Nexus Connect is my own project, from idea to implementation. Each controller is an ESP32 with a button and an LED. The Raspberry Pi registers controllers automatically, assigns player numbers, tracks which controllers are online, and runs the game logic.
 
-The current architecture is:
+<!-- Demo video or GIF goes here. Drag the file into the GitHub editor to upload it, then delete this comment. -->
 
-```text
-ESP32 nodes <-> WiFi <-> Raspberry Pi 5 MQTT broker <-> Python game controller
+## First game: Reaction Race
+
+1. When two or more controllers are online, every controller's LED blinks three times to start the round.
+2. After a random wait of 0 to 10 seconds, all the LEDs turn on at the same moment.
+3. The first player to press their button wins, and the controller reports their reaction time in milliseconds.
+4. Pressing before the LEDs turn on is a false start.
+5. A new round starts automatically after 5 seconds.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    C1[ESP32 controller<br/>Player 1] <-->|Wi-Fi / MQTT| B
+    C2[ESP32 controller<br/>Player 2] <-->|Wi-Fi / MQTT| B
+    C3[ESP32 controller<br/>Player N] <-->|Wi-Fi / MQTT| B
+    subgraph Pi[Raspberry Pi 5]
+        B[Mosquitto<br/>MQTT broker] <--> S[Game server<br/>Python]
+        S --> M[Controller manager]
+        S --> E[Event bus]
+        E --> G[Game modules<br/>Reaction Race]
+    end
 ```
 
-## Why MQTT
+- **Controllers** publish registrations, heartbeats and button events, and subscribe to player assignments and LED commands.
+- **The game server** turns MQTT messages into game events. The **controller manager** assigns player numbers and marks a controller offline if its heartbeats stop for 15 seconds.
+- **The event bus** keeps game logic separate from networking, so a new game is a new module, not a rewrite.
 
-MQTT fits this project well because each controller can publish events and subscribe to commands without needing to know about every other controller.
+## Engineering challenges
 
-The Raspberry Pi runs:
+### Making LEDs on separate wireless boards turn on at the same time
 
-- Mosquitto MQTT broker
-- Python game controller service
+Sending a "turn on now" message doesn't work. Each controller receives it after a different Wi-Fi delay, so the LEDs light up at visibly different times and the game becomes unfair. To fix it:
 
-Each ESP32:
+- Each ESP32 syncs its clock over NTP. The Pi sends a **scheduled start time** (`start_epoch_ms`) instead of a "now" command, and every controller turns its LED on when its own clock reaches that time. Network delay no longer affects when the LEDs light up.
+- If a controller's clock hasn't synced yet, it falls back to a relative delay (`fallback_delay_ms`) measured from when the message arrived.
+- If one controller is still consistently early or late, it can be tuned with a **per-controller timing offset** in `controller_config.py`.
+- "LEDs off" commands are repeated for a short window, so a single dropped message can't leave an LED stuck on.
 
-- connects to WiFi
-- connects to the Pi MQTT broker
-- publishes a registration message
-- publishes input events
-- listens for output commands
-- sends heartbeat messages so the Pi knows it is still online
+### Fair reaction times
 
-## Folder Layout
+If the Pi timed each press, Wi-Fi delay would be added to every player's score. Instead, **each controller measures its own reaction time** from the moment its LED turns on and includes it in the button event (`reaction_ms`). The Pi uses that number to decide the winner.
+
+### Plug-and-play controllers
+
+Each controller uses its **MAC address** as a permanent ID, so the same sketch runs on every board with no per-board edits. New controllers get the next free player number automatically, and specific boards can be pinned to specific player numbers in `controller_config.py`.
+
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| Controllers | ESP32-C3, Arduino C++, PubSubClient |
+| Messaging | MQTT (Mosquitto) |
+| Game server | Raspberry Pi 5, Python 3, paho-mqtt |
+| Testing | pytest |
+
+## Repository layout
 
 ```text
-docs/controller-registration-v1.md
-  Version 1 controller registration and player assignment protocol.
+raspberry-pi/
+  game_server.py          Game server: MQTT handling, registration, heartbeats, events
+  controller_manager.py   Player numbers, online status, last-seen timestamps
+  controller_config.py    Fixed player assignments and per-controller LED timing offsets
+  event_bus.py            In-process event bus that routes controller input to games
+  games/reaction_race.py  Reaction Race game logic
+  tests/                  Unit tests for Reaction Race
 
-docs/controller-manager.md
-  Raspberry Pi controller manager design and heartbeat behavior.
+esp32_controller/
+  esp32_controller.ino    Controller firmware: registration, heartbeats, button events, LED commands
+  wifi_secrets.example.h  Template for Wi-Fi credentials and the broker address
 
-docs/event-system.md
-  Controller events, game state messages, and the first game loop.
-
-docs/protocol.md
-  Earlier scalable node protocol notes.
-
-raspberry-pi/game_server.py
-  Version 1 Raspberry Pi game server. Registers controllers and assigns players.
-
-raspberry-pi/controller_manager.py
-  Tracks controller player numbers, online status, and last_seen timestamps.
-
-raspberry-pi/controller_config.py
-  Fixed controller ID to player number assignments.
-
-raspberry-pi/event_bus.py
-  Small in-process event bus for routing controller input to games.
-
-raspberry-pi/games/reaction_race.py
-  First playable game. LEDs turn on after a random wait, and the fastest button press wins.
-
-esp32_controller/esp32_controller.ino
-  Version 1 ESP32 controller sketch. Registers, receives player assignment, sends heartbeats, and publishes button events.
-
-legacy/pi/game_controller.py
-  Earlier Raspberry Pi controller service. Tracks registered nodes and routes simple game commands.
-
-legacy/esp32/BoardGameNode/BoardGameNode.ino
-  Earlier reusable ESP32 template for buttons, LEDs, OLEDs, motors, and other hardware.
-
-legacy/esp32/examples/ButtonNode/ButtonNode.ino
-  Earlier minimal button controller that publishes button events.
-
-legacy/esp32/examples/MotorNode/MotorNode.ino
-  Earlier motor controller for TB6612FNG using D2/D3/D4/D5 pins.
+docs/                     Protocol and design notes
+legacy/                   Earlier prototypes, kept for reference
 ```
 
-## First Milestone
+## MQTT topics
 
-1. Run Mosquitto on the Raspberry Pi.
-2. Run `raspberry-pi/game_server.py` on the Raspberry Pi.
-3. Upload `esp32_controller/esp32_controller.ino` to each ESP32 controller.
-4. Watch the Pi register each controller by MAC address.
-5. Confirm the first connected controller is assigned Player 1.
+| Topic | Direction | Purpose |
+|-------|-----------|---------|
+| `controller/register` | Controller → Pi | Announce a controller by MAC address |
+| `controller/assign` | Pi → Controller | Assign a player number |
+| `controller/heartbeat` | Controller → Pi | "Still online" message every 5 seconds |
+| `controller/event` | Controller → Pi | Button presses, with reaction time |
+| `controller/command` | Pi → Controller | Scheduled LED commands |
+| `game/state` | Pi → all | Current game status, winner and reaction time |
 
-## Install Python Dependency On Pi
+Example button event:
+
+```json
+{"type":"event","controller_id":"94:A9:90:68:A1:90","event":"button.press","control":"main_button","value":1,"reaction_ms":212}
+```
+
+See [docs/controller-registration-v1.md](docs/controller-registration-v1.md) and [docs/event-system.md](docs/event-system.md) for the full message formats.
+
+## Getting started
+
+### Raspberry Pi
 
 ```bash
 sudo apt update
-sudo apt install python3-pip
+sudo apt install mosquitto mosquitto-clients python3-pip
 python3 -m pip install paho-mqtt
 ```
 
-## Run The Pi Controller
+Mosquitto 2.x only accepts local connections by default. To let the ESP32s connect, add these lines to `/etc/mosquitto/conf.d/nexus.conf`, then run `sudo systemctl restart mosquitto`:
+
+```text
+listener 1883
+allow_anonymous true
+```
+
+Start the game server:
 
 ```bash
 cd raspberry-pi
 python3 game_server.py
 ```
 
-## Controller Registration V1
+### ESP32 controllers
 
-Version 1 uses these MQTT topics:
+1. Copy `esp32_controller/wifi_secrets.example.h` to `esp32_controller/wifi_secrets.h`.
+2. Fill in your Wi-Fi name, Wi-Fi password and the Raspberry Pi's IP address. `wifi_secrets.h` is ignored by Git.
+3. Open `esp32_controller/esp32_controller.ino` in the Arduino IDE and upload it to each controller.
+4. Wire a button to D9 and an LED to D10.
 
-```text
-controller/register
-controller/assign
-controller/heartbeat
-controller/event
-controller/command
-game/state
-```
+Each controller registers itself when it connects. The Pi prints its MAC address and assigned player number.
 
-See [docs/controller-registration-v1.md](docs/controller-registration-v1.md) for the exact message format and test steps.
-
-## First Game: Reaction Race
-
-`raspberry-pi/game_server.py` now runs Reaction Race.
-
-After two controllers are online, the Pi blinks each controller LED 3 times, arms the LEDs for a shared scheduled start time, waits a random 0-10 seconds, and listens for the first button press after the LEDs turn on.
-
-Each controller button press publishes:
-
-```json
-{"type":"event","controller_id":"94:A9:90:68:A1:90","event":"button.press","control":"main_button","value":1}
-```
-
-The Pi maps the controller ID to its player number, scores the event, and publishes the latest game state on:
-
-```text
-game/state
-```
-
-The first player to press after the LEDs turn on wins. Pressing before the LEDs turn on is a false start.
-
-The ESP32 controller sketch uses these pins by default:
-
-```text
-Button: D9
-LED: D10
-```
-
-## ESP32 WiFi Secrets
-
-The controller sketch reads WiFi credentials and the MQTT broker address from a local file that is ignored by Git:
-
-```text
-esp32_controller/wifi_secrets.h
-```
-
-Use `esp32_controller/wifi_secrets.example.h` as the template, then put your real WiFi name, WiFi password and the Raspberry Pi's IP address in `wifi_secrets.h`.
-
-## MQTT Test Commands
-
-Send a command to the motor node:
+### Run the tests
 
 ```bash
-mosquitto_pub -h 127.0.0.1 -t boardgame/nodes/motor_1/cmd -m '{"type":"command","command":"motor.set","value":"forward","speed":220}'
+cd raspberry-pi
+python3 -m pytest tests
 ```
 
-Stop it:
+## Author
 
-```bash
-mosquitto_pub -h 127.0.0.1 -t boardgame/nodes/motor_1/cmd -m '{"type":"command","command":"motor.set","value":"stop"}'
-```
+Created by Anthony Walston.
